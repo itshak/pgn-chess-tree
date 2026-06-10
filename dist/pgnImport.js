@@ -9,6 +9,20 @@ const pgn_1 = require("chessops/pgn");
 const chess_1 = require("chessops/chess");
 const compat_1 = require("chessops/compat");
 const util_1 = require("chessops/util");
+const ops_1 = require("./ops");
+const mergeNodes = (nodes) => {
+    const merged = [];
+    for (const node of nodes) {
+        const existing = merged.find(n => n.id === node.id);
+        if (existing) {
+            (0, ops_1.merge)(existing, node);
+        }
+        else {
+            merged.push(node);
+        }
+    }
+    return merged;
+};
 const commentIdFor = (path, placement, index) => `pgn-${placement}-comment-${path || 'root'}-${index}`;
 const importComments = (comments, path, placement) => {
     const imported = (comments || [])
@@ -57,7 +71,7 @@ const traverse = (node, pos, ply, parentPath) => {
         san: playedSan,
         fen: (0, fen_1.makeFen)(pos.toSetup()),
         uci,
-        children: node.children.map(child => traverse(child, pos.clone(), ply + 1, path)),
+        children: mergeNodes(node.children.map(child => traverse(child, pos.clone(), ply + 1, path))),
         check,
     };
     const comments = importComments(node.data.comments, path, 'comment');
@@ -79,7 +93,7 @@ function default_1(pgn) {
         ply: initialPly,
         fen,
         uci: '',
-        children: game.moves.children.map(child => traverse(child, start.clone(), initialPly + 1, '')),
+        children: mergeNodes(game.moves.children.map(child => traverse(child, start.clone(), initialPly + 1, ''))),
     };
     const rootComments = importComments(game.comments, '', 'comment');
     if (rootComments)

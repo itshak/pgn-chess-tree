@@ -73,6 +73,15 @@ function merge(n1, n2) {
             }))
                 n1.comments.push(c);
         });
+    n2.startingComments &&
+        n2.startingComments.forEach(function (c) {
+            if (!n1.startingComments)
+                n1.startingComments = [c];
+            else if (!n1.startingComments.some(function (d) {
+                return d.text === c.text;
+            }))
+                n1.startingComments.push(c);
+        });
     n2.children.forEach(function (c) {
         const existing = (0, exports.childById)(n1, c.id);
         if (existing)

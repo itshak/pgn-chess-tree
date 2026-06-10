@@ -13,6 +13,20 @@ import { IllegalSetup, type Position } from 'chessops/chess';
 import { scalachessCharPair } from 'chessops/compat';
 import { makeSquare } from 'chessops/util';
 import type { AnalyseData, Player, VariantKey, Ply } from './types';
+import { merge } from './ops';
+
+const mergeNodes = (nodes: Tree.Node[]): Tree.Node[] => {
+  const merged: Tree.Node[] = [];
+  for (const node of nodes) {
+    const existing = merged.find(n => n.id === node.id);
+    if (existing) {
+      merge(existing, node);
+    } else {
+      merged.push(node);
+    }
+  }
+  return merged;
+};
 
 const commentIdFor = (path: string, placement: 'comment' | 'starting', index: number): string =>
   `pgn-${placement}-comment-${path || 'root'}-${index}`;
@@ -71,7 +85,7 @@ const traverse = (node: ChildNode<PgnNodeData>, pos: Position, ply: Ply, parentP
     san: playedSan,
     fen: makeFen(pos.toSetup()),
     uci,
-    children: node.children.map(child => traverse(child, pos.clone(), ply + 1, path)),
+    children: mergeNodes(node.children.map(child => traverse(child, pos.clone(), ply + 1, path))),
     check,
   };
 
@@ -96,7 +110,7 @@ export default function (pgn: string): AnalyseData {
     ply: initialPly,
     fen,
     uci: '',
-    children: game.moves.children.map(child => traverse(child, start.clone(), initialPly + 1, '')),
+    children: mergeNodes(game.moves.children.map(child => traverse(child, start.clone(), initialPly + 1, ''))),
   };
 
   const rootComments = importComments(game.comments, '', 'comment');
