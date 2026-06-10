@@ -12,21 +12,74 @@ import {
 import { IllegalSetup, type Position } from 'chessops/chess';
 import { scalachessCharPair } from 'chessops/compat';
 import { makeSquare } from 'chessops/util';
-import type { AnalyseData, Player, VariantKey, Ply, San, Uci } from './types';
+import type { AnalyseData, Player, VariantKey, Ply } from './types';
 
-const traverse = (node: ChildNode<PgnNodeData>, pos: Position, ply: Ply): Tree.Node => {
-  const move = parseSan(pos, node.data.san);
-  if (!move) throw new Error(`Can't play ${node.data.san} at move ${Math.ceil(ply / 2)}, ply ${ply}`);
+const commentIdFor = (path: string, placement: 'comment' | 'starting', index: number): string =>
+  `pgn-${placement}-comment-${path || 'root'}-${index}`;
 
+const importComments = (
+  comments: string[] | undefined,
+  path: string,
+  placement: 'comment' | 'starting',
+): Tree.Comment[] | undefined => {
+  const imported = (comments || [])
+    .map(text => text.trim())
+    .filter(Boolean)
+    .map((text, index) => ({
+      id: commentIdFor(path, placement, index),
+      text,
+    }));
+  return imported.length ? imported : undefined;
+};
+
+const playNullMove = (pos: any): void => {
+  pos.turn = pos.turn === 'white' ? 'black' : 'white';
+  pos.epSquare = undefined;
+  pos.halfmoves++;
+  if (pos.turn === 'white') {
+    pos.fullmoves++;
+  }
+};
+
+const traverse = (node: ChildNode<PgnNodeData>, pos: Position, ply: Ply, parentPath: Tree.Path): Tree.Node => {
+  const san = node.data.san;
+  const isNull = san === '--' || san === 'Z0' || san === 'null';
+
+  let id: string;
+  let playedSan: string;
+  let uci: string;
+  let check: any = undefined;
+
+  if (isNull) {
+    playNullMove(pos);
+    id = san;
+    playedSan = san;
+    uci = '0000';
+  } else {
+    const move = parseSan(pos, san);
+    if (!move) throw new Error(`Can't play ${san} at move ${Math.ceil(ply / 2)}, ply ${ply}`);
+    id = scalachessCharPair(move);
+    playedSan = makeSanAndPlay(pos, move);
+    uci = makeUci(move);
+    check = pos.isCheck() ? makeSquare(pos.toSetup().board.kingOf(pos.turn)!) : undefined;
+  }
+
+  const path = parentPath + id;
   const newNode: Tree.Node = {
-    id: scalachessCharPair(move),
+    id,
     ply,
-    san: makeSanAndPlay(pos, move),
+    san: playedSan,
     fen: makeFen(pos.toSetup()),
-    uci: makeUci(move),
-    children: node.children.map(child => traverse(child, pos.clone(), ply + 1)),
-    check: pos.isCheck() ? makeSquare(pos.toSetup().board.kingOf(pos.turn)!) : undefined,
+    uci,
+    children: node.children.map(child => traverse(child, pos.clone(), ply + 1, path)),
+    check,
   };
+
+  const comments = importComments(node.data.comments, path, 'comment');
+  if (comments) newNode.comments = comments;
+
+  const startingComments = importComments(node.data.startingComments, path, 'starting');
+  if (startingComments) newNode.startingComments = startingComments;
 
   return newNode;
 };
@@ -43,8 +96,11 @@ export default function (pgn: string): AnalyseData {
     ply: initialPly,
     fen,
     uci: '',
-    children: game.moves.children.map(child => traverse(child, start.clone(), initialPly + 1)),
+    children: game.moves.children.map(child => traverse(child, start.clone(), initialPly + 1, '')),
   };
+
+  const rootComments = importComments(game.comments, '', 'comment');
+  if (rootComments) root.comments = rootComments;
 
   const rules: Rules = parseVariant(headers.get('variant')) || 'chess';
   const variantKey: VariantKey = rulesToVariantKey[rules] || rules;

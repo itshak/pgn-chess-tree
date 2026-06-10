@@ -133,6 +133,11 @@ if (importedData) {
 
 Parses a PGN string and returns an `AnalyseData` object containing the game's metadata and the root of the game tree. Returns `undefined` if parsing fails.
 
+PGN comments are preserved:
+- Root comments before the first move are stored on `tree.root.comments`.
+- Comments after a move are stored on that move node's `comments`.
+- Comments before a move, such as comments at the start of a variation, are stored on that move node's `startingComments`.
+
 **Parameters**:
 - `pgn`: The PGN string to parse.
 
@@ -142,6 +147,7 @@ Parses a PGN string and returns an `AnalyseData` object containing the game's me
 ### `pgnExport.renderFullTxt(ctrl: { data: { game: Game }, tree: TreeWrapper }): string`
 
 Exports a game tree and its associated game data into a PGN string.
+Root comments, move comments, and starting comments are rendered back into PGN with comment escaping.
 
 **Parameters**:
 - `ctrl`: An object containing:
@@ -251,6 +257,7 @@ declare global {
       dests?: string; // Possible destinations for pieces (Lichess specific)
       drops?: string; // Possible drops for pieces (Crazyhouse specific)
       comments?: Comment[];
+      startingComments?: Comment[];
       glyphs?: Glyph[];
       clock?: Clock;
       shapes?: Shape[];

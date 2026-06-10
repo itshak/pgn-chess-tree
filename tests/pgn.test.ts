@@ -5,3 +5,10 @@ it('should parse a pgn', () => {
   const result = pgnImport(pgn);
   expect(result.game?.turns).toBe(1);
 });
+
+it('should parse a pgn with null/Z0 moves', () => {
+  const pgn = '[Event "Test"]\n[Result "*"]\n\n1. Z0 {Intro comment} (1. e4 e5) *';
+  const result = pgnImport(pgn);
+  expect(result.treeParts[0].children[0].san).toBe('--');
+  expect(result.treeParts[0].children[0].uci).toBe('0000');
+});

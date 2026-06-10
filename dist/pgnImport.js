@@ -9,19 +9,63 @@ const pgn_1 = require("chessops/pgn");
 const chess_1 = require("chessops/chess");
 const compat_1 = require("chessops/compat");
 const util_1 = require("chessops/util");
-const traverse = (node, pos, ply) => {
-    const move = (0, san_1.parseSan)(pos, node.data.san);
-    if (!move)
-        throw new Error(`Can't play ${node.data.san} at move ${Math.ceil(ply / 2)}, ply ${ply}`);
+const commentIdFor = (path, placement, index) => `pgn-${placement}-comment-${path || 'root'}-${index}`;
+const importComments = (comments, path, placement) => {
+    const imported = (comments || [])
+        .map(text => text.trim())
+        .filter(Boolean)
+        .map((text, index) => ({
+        id: commentIdFor(path, placement, index),
+        text,
+    }));
+    return imported.length ? imported : undefined;
+};
+const playNullMove = (pos) => {
+    pos.turn = pos.turn === 'white' ? 'black' : 'white';
+    pos.epSquare = undefined;
+    pos.halfmoves++;
+    if (pos.turn === 'white') {
+        pos.fullmoves++;
+    }
+};
+const traverse = (node, pos, ply, parentPath) => {
+    const san = node.data.san;
+    const isNull = san === '--' || san === 'Z0' || san === 'null';
+    let id;
+    let playedSan;
+    let uci;
+    let check = undefined;
+    if (isNull) {
+        playNullMove(pos);
+        id = san;
+        playedSan = san;
+        uci = '0000';
+    }
+    else {
+        const move = (0, san_1.parseSan)(pos, san);
+        if (!move)
+            throw new Error(`Can't play ${san} at move ${Math.ceil(ply / 2)}, ply ${ply}`);
+        id = (0, compat_1.scalachessCharPair)(move);
+        playedSan = (0, san_1.makeSanAndPlay)(pos, move);
+        uci = (0, chessops_1.makeUci)(move);
+        check = pos.isCheck() ? (0, util_1.makeSquare)(pos.toSetup().board.kingOf(pos.turn)) : undefined;
+    }
+    const path = parentPath + id;
     const newNode = {
-        id: (0, compat_1.scalachessCharPair)(move),
+        id,
         ply,
-        san: (0, san_1.makeSanAndPlay)(pos, move),
+        san: playedSan,
         fen: (0, fen_1.makeFen)(pos.toSetup()),
-        uci: (0, chessops_1.makeUci)(move),
-        children: node.children.map(child => traverse(child, pos.clone(), ply + 1)),
-        check: pos.isCheck() ? (0, util_1.makeSquare)(pos.toSetup().board.kingOf(pos.turn)) : undefined,
+        uci,
+        children: node.children.map(child => traverse(child, pos.clone(), ply + 1, path)),
+        check,
     };
+    const comments = importComments(node.data.comments, path, 'comment');
+    if (comments)
+        newNode.comments = comments;
+    const startingComments = importComments(node.data.startingComments, path, 'starting');
+    if (startingComments)
+        newNode.startingComments = startingComments;
     return newNode;
 };
 function default_1(pgn) {
@@ -35,8 +79,11 @@ function default_1(pgn) {
         ply: initialPly,
         fen,
         uci: '',
-        children: game.moves.children.map(child => traverse(child, start.clone(), initialPly + 1)),
+        children: game.moves.children.map(child => traverse(child, start.clone(), initialPly + 1, '')),
     };
+    const rootComments = importComments(game.comments, '', 'comment');
+    if (rootComments)
+        root.comments = rootComments;
     const rules = (0, pgn_1.parseVariant)(headers.get('variant')) || 'chess';
     const variantKey = rulesToVariantKey[rules] || rules;
     const variantName = (0, pgn_1.makeVariant)(rules) || variantKey;

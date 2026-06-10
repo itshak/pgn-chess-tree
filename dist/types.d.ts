@@ -65,6 +65,7 @@ declare global {
             dests?: string;
             drops?: string;
             comments?: Comment[];
+            startingComments?: Comment[];
             glyphs?: Glyph[];
             clock?: Clock;
             shapes?: Shape[];

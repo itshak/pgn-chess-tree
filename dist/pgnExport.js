@@ -5,17 +5,32 @@ exports.renderVariationPgn = renderVariationPgn;
 const fen_1 = require("chessops/fen");
 const utils_1 = require("./utils");
 const plyPrefix = (node) => `${Math.floor((node.ply + 1) / 2)}${node.ply % 2 === 1 ? '. ' : '... '}`;
+const escapeComment = (text) => text.replace(/\\/g, '\\\\').replace(/}/g, '\\}');
+const renderComments = (comments) => (comments || [])
+    .map(comment => comment.text.trim())
+    .filter(Boolean)
+    .map(text => `{${escapeComment(text)}}`)
+    .join(' ');
+const appendPart = (text, part) => {
+    if (!part)
+        return text;
+    return text ? `${text} ${part}` : part;
+};
+const renderMoveTxt = (node, forcePly) => {
+    let text = renderComments(node.startingComments);
+    const moveText = `${forcePly || node.ply % 2 === 1 ? plyPrefix(node) : ''}${(0, utils_1.fixCrazySan)(node.san)}`;
+    text = appendPart(text, moveText);
+    return appendPart(text, renderComments(node.comments));
+};
 function renderNodesTxt(node, forcePly) {
+    let s = node.san ? '' : renderComments(node.comments);
     if (node.children.length === 0)
-        return '';
-    let s = '';
+        return s;
     const first = node.children[0];
-    if (forcePly || first.ply % 2 === 1)
-        s += plyPrefix(first);
-    s += (0, utils_1.fixCrazySan)(first.san);
+    s = appendPart(s, renderMoveTxt(first, forcePly || first.ply % 2 === 1));
     for (let i = 1; i < node.children.length; i++) {
         const child = node.children[i];
-        s += ` (${plyPrefix(child)}${(0, utils_1.fixCrazySan)(child.san)}`;
+        s += ` (${renderMoveTxt(child, true)}`;
         const variation = renderNodesTxt(child, false);
         if (variation)
             s += ' ' + variation;
@@ -86,7 +101,8 @@ function renderPgnTags(game) {
 }
 function renderFullTxt(ctrl) {
     const g = ctrl.data.game;
-    return renderPgnTags(g) + renderNodesTxt(ctrl.tree.root, true) + ' ' + g.result;
+    const moves = renderNodesTxt(ctrl.tree.root, true);
+    return `${renderPgnTags(g)}${moves}${moves ? ' ' : ''}${g.result}`;
 }
 function renderVariationPgn(game, nodeList) {
     const filteredNodeList = nodeList.filter(node => node.san);
@@ -94,13 +110,10 @@ function renderVariationPgn(game, nodeList) {
         return '';
     let variationPgn = '';
     const first = filteredNodeList[0];
-    variationPgn += `${plyPrefix(first)}${first.san} `;
+    variationPgn += `${renderMoveTxt(first, true)} `;
     for (let i = 1; i < filteredNodeList.length; i++) {
         const node = filteredNodeList[i];
-        if (node.ply % 2 === 1) {
-            variationPgn += (0, utils_1.plyToTurn)(node.ply) + '. ';
-        }
-        variationPgn += (0, utils_1.fixCrazySan)(node.san) + ' ';
+        variationPgn += `${renderMoveTxt(node, node.ply % 2 === 1)} `;
     }
     return renderPgnTags(game) + variationPgn;
 }

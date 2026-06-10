@@ -1,6 +1,6 @@
 import { INITIAL_FEN } from 'chessops/fen';
-import { Game, Ply, San } from './types';
-import { fixCrazySan, plyToTurn } from './utils';
+import { Game } from './types';
+import { fixCrazySan } from './utils';
 import { TreeWrapper } from './tree';
 
 interface AnalyseCtrl {
@@ -11,17 +11,37 @@ interface AnalyseCtrl {
 const plyPrefix = (node: Tree.Node): string =>
   `${Math.floor((node.ply + 1) / 2)}${node.ply % 2 === 1 ? '. ' : '... '}`;
 
-function renderNodesTxt(node: Tree.Node, forcePly: boolean): string {
-  if (node.children.length === 0) return '';
+const escapeComment = (text: string): string => text.replace(/\\/g, '\\\\').replace(/}/g, '\\}');
 
-  let s = '';
+const renderComments = (comments: Tree.Comment[] | undefined): string =>
+  (comments || [])
+    .map(comment => comment.text.trim())
+    .filter(Boolean)
+    .map(text => `{${escapeComment(text)}}`)
+    .join(' ');
+
+const appendPart = (text: string, part: string): string => {
+  if (!part) return text;
+  return text ? `${text} ${part}` : part;
+};
+
+const renderMoveTxt = (node: Tree.Node, forcePly: boolean): string => {
+  let text = renderComments(node.startingComments);
+  const moveText = `${forcePly || node.ply % 2 === 1 ? plyPrefix(node) : ''}${fixCrazySan(node.san!)}`;
+  text = appendPart(text, moveText);
+  return appendPart(text, renderComments(node.comments));
+};
+
+function renderNodesTxt(node: Tree.Node, forcePly: boolean): string {
+  let s = node.san ? '' : renderComments(node.comments);
+  if (node.children.length === 0) return s;
+
   const first = node.children[0];
-  if (forcePly || first.ply % 2 === 1) s += plyPrefix(first);
-  s += fixCrazySan(first.san!);
+  s = appendPart(s, renderMoveTxt(first, forcePly || first.ply % 2 === 1));
 
   for (let i = 1; i < node.children.length; i++) {
     const child = node.children[i];
-    s += ` (${plyPrefix(child)}${fixCrazySan(child.san!)}`;
+    s += ` (${renderMoveTxt(child, true)}`;
     const variation = renderNodesTxt(child, false);
     if (variation) s += ' ' + variation;
     s += ')';
@@ -95,7 +115,8 @@ function renderPgnTags(game: Game): string {
 
 export function renderFullTxt(ctrl: AnalyseCtrl): string {
   const g = ctrl.data.game;
-  return renderPgnTags(g) + renderNodesTxt(ctrl.tree.root, true) + ' ' + g.result;
+  const moves = renderNodesTxt(ctrl.tree.root, true);
+  return `${renderPgnTags(g)}${moves}${moves ? ' ' : ''}${g.result}`;
 }
 
 export function renderVariationPgn(game: Game, nodeList: Tree.Node[]): string {
@@ -105,15 +126,11 @@ export function renderVariationPgn(game: Game, nodeList: Tree.Node[]): string {
   let variationPgn = '';
 
   const first = filteredNodeList[0];
-  variationPgn += `${plyPrefix(first)}${first.san} `;
+  variationPgn += `${renderMoveTxt(first, true)} `;
 
   for (let i = 1; i < filteredNodeList.length; i++) {
     const node = filteredNodeList[i];
-    if (node.ply % 2 === 1) {
-      variationPgn += plyToTurn(node.ply) + '. ';
-    }
-
-    variationPgn += fixCrazySan(node.san!) + ' ';
+    variationPgn += `${renderMoveTxt(node, node.ply % 2 === 1)} `;
   }
 
   return renderPgnTags(game) + variationPgn;
